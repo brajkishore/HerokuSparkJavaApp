@@ -6,17 +6,27 @@
 import static spark.Spark.get;
 import static spark.Spark.post;
 
+import java.awt.image.BufferedImage;
+import java.awt.image.ColorModel;
+import java.awt.image.WritableRaster;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
+import javax.imageio.ImageIO;
 import javax.servlet.MultipartConfigElement;
 import javax.servlet.ServletException;
 import javax.servlet.http.Part;
+
+import com.jhlabs.image.BoxBlurFilter;
 
 import spark.Request;
 import spark.Response;
@@ -126,27 +136,47 @@ public class Main {
 				     multipartConfigElement);
 			
 			Part part = request.raw().getPart(IMAGE_NAME);	
-			submittedFileName=part.getSubmittedFileName();
-			fileName=getUnqFileName(submittedFileName);
-			Path out=Paths.get(baseLocation+"\\" + fileName);
 			
-		
+			
+			submittedFileName=part.getSubmittedFileName();
+			
+			int indx=submittedFileName.lastIndexOf(".");
+			String ext=submittedFileName.substring(indx).trim();
+			
+			fileName=getUnqFileName(submittedFileName,ext);
+			Path out=Paths.get(baseLocation+File.separator+ fileName);
+				
 			try (final InputStream in = part.getInputStream()) {				
 				   Files.copy(in, out,StandardCopyOption.REPLACE_EXISTING);				   
 				   part.delete();
 				}
-						
-			multipartConfigElement = null;
+				
+			BufferedImage srcImage = ImageIO.read(out.toFile());
+			BufferedImage destImage = deepCopy(srcImage);
+		  
+		    BoxBlurFilter boxBlurFilter = new BoxBlurFilter();
+		    boxBlurFilter.setRadius(2);
+		    boxBlurFilter.setIterations(3);
+		    destImage = boxBlurFilter.filter(srcImage, destImage);
+	  
+		    ImageIO.write(destImage, ext.substring(1),new File(out.toFile().getAbsolutePath()));
+			
+		 	multipartConfigElement = null;
 			part = null;			
 		
 		
 		return fileName;
 	}
 	
-	private static String getUnqFileName(String originalFileName){
+	private static BufferedImage deepCopy(BufferedImage bi) {
+		 ColorModel cm = bi.getColorModel();
+		 boolean isAlphaPremultiplied = cm.isAlphaPremultiplied();
+		 WritableRaster raster = bi.copyData(null);
+		 return new BufferedImage(cm, raster, isAlphaPremultiplied, null);
+		}
+	 
+	private static String getUnqFileName(String originalFileName,String ext){
 		
-		int indx=originalFileName.lastIndexOf(".");
-		String ext=originalFileName.substring(indx).trim();
 		return UUID.randomUUID().toString()+ext;
 		
 	}
